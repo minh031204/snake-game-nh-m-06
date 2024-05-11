@@ -7,7 +7,7 @@
     s_size  db     4,0       ; size of the snake                           ; de không ghi dè lên các bien khác
     ;mang s_size 2 phan tu 4 va 0
                                                                               ; variables
-    tail    dw      ?       ;; t?a d? c?a duôi tru?c dó  (byte th?p X, byte cao Y)
+    tail    dw      ?       ;; toa do cua duôi truoc dó  (byte thap X, byte cao Y)
     
     ; Hang so huong di   
     ;  (mã phím BIOS):      Keyboard scan codes 
@@ -43,7 +43,7 @@
      db 15 dup(20h),"  \_____|\__,_|_| |_| |_|\___(_)                    ", 0dh,0ah,0ah
      db 25 dup(20h),"    Press Enter to start.                             $"    
     
-    ; Tin nh?n k?t thúc
+    ; Tin nhan ket thúc
     msgover db  5 dup(0ah),15 dup(20h)
      db              "  ___   __   _  _  ____     __   _  _  ____  ____ ", 0dh,0ah 
      db  15 dup(20h)," / __) / _\ ( \/ )(  __)   /  \ / )( \(  __)(  _ \", 0dh,0ah 
@@ -51,7 +51,7 @@
      db  15 dup(20h)," \___/\_/\_/\_)(_/(____)   \__/  \__/ (____)(__\_)", 0dh,0ah,0ah,0ah                                                  
      db  30 dup(20h),"   Your score is : $", 0dh,0ah
                                                         
-    ; ------ Ph?n mã ------
+
     
     .code  
         mov dx, offset msgstart     ;;
@@ -128,38 +128,39 @@
         mov ax,tail  ;luu toa dô duôi cu vào ax
         mov bh,0
         mov bl,s_size
-        add bl,s_size   ;bh=0 --- bl = s_size*2-2
+        add bl,s_size     ;bh=0 --- bl = s_size*2-2
         sub bl,2
-        mov snake[bx],ax
+        mov snake[bx],ax  ;add new tail
         call scoreplus
         call randomizeMeal
         jmp no_hide_old_tail
-         ;; mo r?ng r?n và hi?n th? c?t cu?i cùng
+         ;; mo rong ran và hien thi côt cuôi cùng
     
     
     hide_old_tail:            ;ân phân duoi cu 
         
         mov     dx, tail
         
-        ; di chuy?n con tr?
+        ; di chuyen con tro vê vi tri duôi cu luu tai DX
         mov     ah, 02h
         int     10h
         
-        ; in ra ' ' tai vi trí:   in ra khoang trang tai vi trí cua tail
+        ; in ra khoang trang tai vi trí cua tail => dã xóa old_tail
+
+        
         mov     al, ' '
         mov     ah, 09h
-        mov     bl, 0fh ; thu?c tính. ký t? ' ' n?n dialo b? m?t lower 4bits không có
-        mov     cx, 1   ; m?t ký t?.
+        mov     cx, 1   ;in môt ký tu khoang trang.
         int     10h
     
     no_hide_old_tail:
         
-        ; === ki?m tra các l?nh c?a ngu?i choi:
-        mov     ah, 01h     ; có gì dó trong b? d?m bàn phím không?
+        ; kiêm tra các lênh cua player
+        mov     ah, 01h     ; có gì dó trong bô nho dêm bàn phím không?
         int     16h
-        jz      no_key  ;;
+        jz      no_key  ;;  ; ko có nút nào duoc bâm thi thôi
         
-        mov     ah, 00h     ; n?u có, nh?n nó 
+        mov     ah, 00h     ; nêu có nút duoc bâm thì luu nút dó  vào cur_dir 
         int     16h         ;
         mov cur_dir,ah
     
@@ -244,7 +245,7 @@
                          
     move_up:
       cmp old_dir,down
-      je get_old_dir            ;cùng nguyên tac
+      je get_old_dir          ;cùng nguyên tac
       mov   al, b.snake[1]    ;Y-- 
       dec   al                ;
       mov   b.snake[1], al    ;
@@ -261,7 +262,7 @@
       mov   al, b.snake[1]
       inc   al                ;
       mov   b.snake[1], al    ;
-      cmp   al, es:[84h]      ; 
+      cmp   al, es:[84h]      ;cùng nguyên tac 
       jbe   stop_move         ;
       mov   b.snake[1], 0     ;
       jmp   stop_move
@@ -327,39 +328,39 @@
         int     10h
         ret
     randomizeMeal endp
-    
-   
-    
-    scoreplus proc    ;score++
+                      ;                         [0] [1] [2] [3]
+                      ;                          |   |   |   |
+                      ;                          v   v   v   v
+    scoreplus proc    ;score++        ;score db '0','0','0','0','$'   score là chuôi dai diên cho sô 4 chu sô
             
-        mov al,score[3]     ;; tang s? d?u tiên
+        mov al,score[3]     ;; tang sô dâu tiên
         inc al
-        cmp al,'9'         ;; s? d?u tiên vu?t quá '9' ?
+        cmp al,'9'         ;; sô dâu tiên vuot quá '9' ?
         jg inc_second
-        mov score[3],al
+        mov score[3],al    ; chua vuot quá 9 thi thôi, print score
         ret
         
     inc_second:
-        mov score[3],'0'    ;; dua s? d?u tiên v? '0'
-        mov al,score[2]     ;; tang s? th? hai
+        mov score[3],'0'    ;; dua sô dâu tiên vê '0'
+        mov al,score[2]     ;; tang so thu hai
         inc al
-        cmp al,'9'          ;; s? th? hai vu?t quá '9' ?
+        cmp al,'9'          ;; sô thu hai vuot quá '9' ?
         jg inc_third
         mov score[2],al
         ret
         
     inc_third:
-        mov score[2],'0'    ;; dua s? th? hai v? '0'
-        mov al,score[1]     ;; tang s? th? ba
+        mov score[2],'0'    ;; dua so thu hai ve '0'
+        mov al,score[1]     ;; tang so thu ba
         inc al
-        cmp al,'9'          ;; s? th? ba vu?t quá '9' ?
+        cmp al,'9'          ;; so thu ba vuot quá '9' ?
         jg inc_fourth
         mov score[1],al
         ret
         
     inc_fourth:
-        mov score[1],'0'    ;; dua s? th? ba v? '0'
-        mov al,score[0]     ;; tang s? th? tu
+        mov score[1],'0'    ;; dua so thu ba ve '0'
+        mov al,score[0]     ;; tang so thu tu
         inc al              ;; 
         mov score[0],al
         ret
