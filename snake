@@ -1,0 +1,384 @@
+     org 100h
+    .data
+    ; 
+    ; Ðinh nghia toa do cua con ran (tu dau den duôi)
+    ; (X,Y) = (byte thap, byte cao)
+    snake dw 0Dh,0Ch,0Bh,0Ah, 150 dup(?)   ;(X0,Y0),(X1,Y1)...  ; dat bô nho cho con ran
+    s_size  db     4,0       ; size of the snake                           ; de không ghi dè lên các bien khác
+    ;mang s_size 2 phan tu 4 va 0
+                                                                              ; variables
+    tail    dw      ?       ;; t?a d? c?a duôi tru?c dó  (byte th?p X, byte cao Y)
+    
+    ; Hang so huong di   
+    ;  (mã phím BIOS):      Keyboard scan codes 
+         
+    left    equ     4bh
+    right   equ     4dh
+    up      equ     48h
+    down    equ     50h 
+    
+    ; Huong hien tai cua con ran
+    cur_dir db      right
+    ; Huong cu cua con ran
+    old_dir db      right
+    ; Toa do cua môi
+    mealX  db  ?
+    mealY  db  ?
+    
+    ; Ðiem
+    score db '0','0','0','0','$'
+    
+    ; Tin nhan bat dau
+    msgstart db 5 dup(0ah),15 dup(20h)
+     db             "  _______ _             _____             _         ", 0dh,0ah
+     db 15 dup(20h)," |__   __| |           / ____|           | |        ", 0dh,0ah       
+     db 15 dup(20h),"    | |  | |__   ___  | (___  _ __   __ _| | _____  ", 0dh,0ah
+     db 15 dup(20h),"    | |  | '_ \ / _ \  \___ \| '_ \ / _` | |/ / _ \ ", 0dh,0ah
+     db 15 dup(20h),"    | |  | | | |  __/  ____) | | | | (_| |   <  __/ ", 0dh,0ah
+     db 15 dup(20h),"   _|_|_ |_| |_|\___| |_____/|_| |_|\__,_|_|\_\___| ", 0dh,0ah
+     db 15 dup(20h),"  / ____|                    | |                    ", 0dh,0ah
+     db 15 dup(20h)," | |  __  __ _ _ __ ___   ___| |                    ", 0dh,0ah
+     db 15 dup(20h)," | | |_ |/ _` | '_ ` _ \ / _ \ |                    ", 0dh,0ah
+     db 15 dup(20h)," | |__| | (_| | | | | | |  __/_|                    ", 0dh,0ah
+     db 15 dup(20h),"  \_____|\__,_|_| |_| |_|\___(_)                    ", 0dh,0ah,0ah
+     db 25 dup(20h),"    Press Enter to start.                             $"    
+    
+    ; Tin nh?n k?t thúc
+    msgover db  5 dup(0ah),15 dup(20h)
+     db              "  ___   __   _  _  ____     __   _  _  ____  ____ ", 0dh,0ah 
+     db  15 dup(20h)," / __) / _\ ( \/ )(  __)   /  \ / )( \(  __)(  _ \", 0dh,0ah 
+     db  15 dup(20h),"( (_ \/    \/ \/ \ ) _)   (  O )\ \/ / ) _)  )   /", 0dh,0ah 
+     db  15 dup(20h)," \___/\_/\_/\_)(_/(____)   \__/  \__/ (____)(__\_)", 0dh,0ah,0ah,0ah                                                  
+     db  30 dup(20h),"   Your score is : $", 0dh,0ah
+                                                        
+    ; ------ Ph?n mã ------
+    
+    .code  
+        mov dx, offset msgstart     ;;
+        mov ah, 9 
+        int 21h    
+        
+        mov ax, 40h                   
+        mov es, ax 
+    
+     ; Ðoi cho phím Enter duoc nhan
+    wait_for_enter:
+        mov ah, 00h 
+        int 16h
+        cmp al,0dh      
+        jne wait_for_enter          
+                                                                  
+        mov al, 1 ; chuyen sang trang thai 1 
+        mov ah, 05h
+        int 10h          
+        
+       call randomizeMeal 
+    
+    ;;----------------
+    
+    game_loop: 
+    
+         ; === hien thi dâu moi
+        call show_new_head
+         ; ====== kiem tra xem liêu con ran có chêt không           ;;
+        
+        
+        mov dx,snake[0]  ;di chuyen con tro den vi tri head of snake
+        mov si,w.s_size  ;si nhân s_size
+        add si,w.s_size  ;si=si*2
+        sub si,2         ;si-=2 <=> khi nay si luu gia tri s_size*2-2
+        
+        mov cx,w.s_size  ;cx luu do dai cua snake
+        sub cx,4         ;neu cx-4=0 tuc la khi nay moi bat dau game, khi nay ran không thê chêt
+        jz no_death      ;s_size = 4 thi jump to no_death
+        
+    deathloop: 
+                       
+        cmp dx,snake[si]  ;; dâu trùng voi mot phân cua thân ran
+        je game_over
+        sub si,2
+        dec cx
+        jnz deathloop
+    no_death:                                          
+        ;luu duôi... dê xóa sau này.
+        mov si,w.s_size   ; si nhan  (s_size-1)*2
+        add si,w.s_size
+        sub si,2
+        mov ax, snake[si]  
+        mov tail, ax     
+    
+        call move_snake           ;;
+    
+        ;toa dô dâu  == toa dô cua Meal ?
+    
+        mov dx,snake[0]   ;store the coordinates of the snake’s head into the DX register
+        mov al,mealX
+        mov ah,mealY      ;store the coordinates of the food into the AX register
+        
+        cmp ax,dx
+        jne hide_old_tail ;nêu ax == dx tuc là ran dã an môi
+                          ;con ax != dx thi là chua an môi cho nên khi di chuyên phai xóa old_tail
+        
+        
+        ;TRUONG HOP RAN DÃ AN MÔI
+        mov al,s_size  
+        inc al       ; ran da an môi nên tang kích thuoc cua ran
+        mov s_size,al 
+        
+        mov ax,tail  ;luu toa dô duôi cu vào ax
+        mov bh,0
+        mov bl,s_size
+        add bl,s_size   ;bh=0 --- bl = s_size*2-2
+        sub bl,2
+        mov snake[bx],ax
+        call scoreplus
+        call randomizeMeal
+        jmp no_hide_old_tail
+         ;; mo r?ng r?n và hi?n th? c?t cu?i cùng
+    
+    
+    hide_old_tail:            ;ân phân duoi cu 
+        
+        mov     dx, tail
+        
+        ; di chuy?n con tr?
+        mov     ah, 02h
+        int     10h
+        
+        ; in ra ' ' tai vi trí:   in ra khoang trang tai vi trí cua tail
+        mov     al, ' '
+        mov     ah, 09h
+        mov     bl, 0fh ; thu?c tính. ký t? ' ' n?n dialo b? m?t lower 4bits không có
+        mov     cx, 1   ; m?t ký t?.
+        int     10h
+    
+    no_hide_old_tail:
+        
+        ; === ki?m tra các l?nh c?a ngu?i choi:
+        mov     ah, 01h     ; có gì dó trong b? d?m bàn phím không?
+        int     16h
+        jz      no_key  ;;
+        
+        mov     ah, 00h     ; n?u có, nh?n nó 
+        int     16h         ;
+        mov cur_dir,ah
+    
+    no_key:
+    jmp game_loop
+    
+    game_over:
+    xor dx,dx              ; dx = 0
+    mov ah, 02h        ; di chuyen con tro vê (0,0)
+    int 10h
+    mov dx,offset msgover  ; in ra thông diêp kêt thúc
+    mov ah,09h
+    int 21h
+    mov dx,offset score    ; in ra diem
+    mov ah,09h
+    int 21h
+    ret
+    
+    ; ------ các hàm ------
+    
+    move_snake proc
+    
+    ;  
+      ; con tro DI tro den duôi
+      
+      mov   di,w.s_size     ;; DI luu gia tri (s_size-1)*2
+      add di,w.s_size
+      sub di,2
+      ; di chuyen co the (toa do)
+      ; bat dau tu duôi ran
+      mov cx,w.s_size
+      dec cx
+      
+    move_array:                
+      mov   ax, snake[di-2]   
+      mov   snake[di], ax    ;chuyên nôi dung cua snake[di-2] vào snake[di]  
+      sub   di, 2            ;cung làm cho vi trí cua snake[di] trên màn hình thay dôi
+      loop  move_array       ;khi dó snake[di] se tiên vê phía truóc
+    
+    getdir:
+    cmp     cur_dir, left
+      je    move_left
+    cmp     cur_dir, right
+      je    move_right
+    cmp     cur_dir, up
+      je    move_up
+    cmp     cur_dir, down
+      je    move_down         
+      
+    get_old_dir:
+            mov al,old_dir
+            mov cur_dir,al
+    jmp     getdir       ; huong moi =  huong cu
+    
+    move_left:
+      cmp old_dir,right
+      je get_old_dir
+      mov   al, b.snake[0]
+      dec   al              ;X--
+      mov   b.snake[0], al  ;
+      cmp   al, -1          ;nêu al=-1 tuc b.snake[0] = -1 sau khi tru 1 don vi tuc la no bat dau di qua biên trái, truoc do dâu ran dang o côt 0
+      jne   stop_move       
+      mov   al, es:[4ah]    ;es:[4ah] chua so cot trong màn hình
+      dec   al              ;so cot duoc danh so thu tu : (0 -> es[4ah]-1)
+      mov   b.snake[0], al  ;dat dâu ran vao  
+      jmp   stop_move
+    
+    move_right:
+      cmp old_dir,left
+      je get_old_dir
+      mov   al, b.snake[0]    ; cùng nguyên tac
+      inc   al                ; X++;
+      mov   b.snake[0], al    ;
+      cmp   al, es:[4ah]      ;kiem tra X <  cot cuoi cùng ?
+      jb    stop_move         ;có: tiep tuc di chuyen
+      mov   b.snake[0], 0     ; quay lai biên trái (x(head) = 0)
+      jmp   stop_move         ;tiep tuc di chuyen
+                         
+      ;mang snake la kieu dw
+      ;do dó: b.snake[0] dai dien cho toa do X (hàng) cua dâu ran
+      ;       b.snake[1] dai dien cho toa do X (côt)  cua dâu ran                 
+                         
+    move_up:
+      cmp old_dir,down
+      je get_old_dir            ;cùng nguyên tac
+      mov   al, b.snake[1]    ;Y-- 
+      dec   al                ;
+      mov   b.snake[1], al    ;
+      cmp   al, -1
+      jne   stop_move
+      mov   al, es:[84h]      ;
+      mov   b.snake[1], al    ;
+      jmp   stop_move
+                         
+                         
+    move_down:
+      cmp old_dir,up
+      je get_old_dir
+      mov   al, b.snake[1]
+      inc   al                ;
+      mov   b.snake[1], al    ;
+      cmp   al, es:[84h]      ; 
+      jbe   stop_move         ;
+      mov   b.snake[1], 0     ;
+      jmp   stop_move
+    
+    stop_move:                ;môi lân chuong trình move_snake chi dich chuyên ran 1 don vi
+      mov al,cur_dir          ;dich chuyen 1 don vi xong phai dung lai da 
+      mov old_dir,al
+      ret  
+      
+    move_snake endp
+    
+    
+                  
+                  
+    randomizeMeal proc near     ;;===== make new food
+    reRandomize:
+        mov ah, 00h   ; ; ngat de nhan thoi gian tu he thong       
+        int 1ah       ; CX:DX nhan so chu ki tu nua dêm    
+        mov ax, dx
+        xor dx, dx
+        mov cx,10     ; 25 là chieu rong cua màn hình
+        div cx       ; tuong duong voi rand()%25   DX nhan phan du cua phép chia DX:AX cho CX
+        mov mealY,dl
+    
+       mov ah, 00h           
+       int 1ah          
+       mov ax, dx
+       xor dx, dx
+       mov cx,10      ; 80 là chieu dài cua màn hình
+       div cx        ; tuong duong voi rand()%80  DX nhan phan du cua phép chia DX:AX cho CX
+       mov mealX,dl   
+       
+       mov dh,mealY
+        ; neu Meal lay toa do tu mot phan cua con ran
+        ;xor cx,cx
+        mov cx,w.s_size   ;luu kich thuoc cua snake vào cx (lay phan tu dau cua mang )
+                          ;luu vao cx de lam bien dem, duyet tu dâu->dít cua snake
+        xor bx,bx      
+        ;bx=0
+        
+    no_overwrite_snake:   ; khong ghi de len snake
+        ;dx khi nay luu toa do cua food
+        cmp dx,snake[bx]  ; snake[0] tuc la phan tu dau tien cua mang snake
+        je reRandomize    ;lênh nay co tac dung kiem tra xem ran an moi chua, neu an roi thi make new food
+        
+        add bx,2       ;bx+=2 tuc la sang phan tu tiep theo cua mang snake, kieu dw nen phai +2 , binh thuong dw la 4 byte co nhung ma do assem8086 nen chi co 2 byte thoi, tuy thuoc vao kien truc
+        dec cx
+        jnz no_overwrite_snake ;khi nao duyet qua ass cua snake thi stop  
+        ;--- hien thi môi
+            
+        mov ah, 02h  ; di chuyen con tro den (X,Y)=(dl,dh)   hàng (DH) và cot (DL) 
+        
+        mov bh,01h   ;khong co lenh nay thi dô dài cua ran se khong dài ra và new food se không hiên thi
+        ;các thao tác do hoa tiep theo se duoc thuc hien trên trang video 1          
+        int 10h   
+        
+        mov al, 04h     ; 0e4h là mã ascii dai diên cho food (co thê thay doi ki tu nay)      
+        mov     bl, 0eh ; thuc tính; lower 4bits : màu cua ký tu; higher 4 bits: màu nên cua ký tu
+                        ;bl luu màu cua food, 0dh dai dien cho pink trong bios color attribute
+        ;hàm 09h cua ngat 10h yêu câu voi al là kí tu can ve, bl la color of char, cx la so luong ki tu muon ve
+        mov     cx, 1   
+        mov     ah, 09h     ; doan nay co tac dung in ra new food 
+        int     10h
+        ret
+    randomizeMeal endp
+    
+   
+    
+    scoreplus proc    ;score++
+            
+        mov al,score[3]     ;; tang s? d?u tiên
+        inc al
+        cmp al,'9'         ;; s? d?u tiên vu?t quá '9' ?
+        jg inc_second
+        mov score[3],al
+        ret
+        
+    inc_second:
+        mov score[3],'0'    ;; dua s? d?u tiên v? '0'
+        mov al,score[2]     ;; tang s? th? hai
+        inc al
+        cmp al,'9'          ;; s? th? hai vu?t quá '9' ?
+        jg inc_third
+        mov score[2],al
+        ret
+        
+    inc_third:
+        mov score[2],'0'    ;; dua s? th? hai v? '0'
+        mov al,score[1]     ;; tang s? th? ba
+        inc al
+        cmp al,'9'          ;; s? th? ba vu?t quá '9' ?
+        jg inc_fourth
+        mov score[1],al
+        ret
+        
+    inc_fourth:
+        mov score[1],'0'    ;; dua s? th? ba v? '0'
+        mov al,score[0]     ;; tang s? th? tu
+        inc al              ;; 
+        mov score[0],al
+        ret
+         
+    scoreplus endp
+    
+    show_new_head proc   ; print the new head of snake
+        
+        mov     dx, snake[0]        
+        mov     ah, 02h     ; di chuyen con cho den vi tri dx        
+        int     10h
+        mov     al, 219     ; 219 là môt dôt cua thân ran, xem bang ma ascii     
+        mov     ah, 09h 
+        mov     bl, 0Ah 
+        mov     bh,01h      ;hàm 09h cua ngat 10h in 1 ki tu tai vi tri con tro
+        mov     cx, 1       ;al chua ki tu can ve
+        int     10h         ;bl chua mau cua ki tu can ve ; xem mau trong BIOS color attribute
+        ret                 ;cx chi dinh so luong ki tu can ve
+    show_new_head endp
+    
+    .exit
+    end
